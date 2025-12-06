@@ -22,6 +22,10 @@ One-page, deterministic GitHub URL shortener that encodes/decode raw/blob links 
 - TikToken (`js-tiktoken@1.0.21`) is imported via CDN. We wait for both the dictionary and tokenizer before enabling the interface so we never produce/handle incompatible hashes.
 - No bundler/tooling is required. Edit `index.html`, refresh, done.
 
+### Lightweight decoder
+
+Need redirects without the UI? Drop `<script src="embed-shorty.js"></script>` on any page in this folder (or copy the file alongside `words.txt`). Visiting `https://selfdotsend.com/#shortcode` triggers the same dictionary-based decoder and immediately redirects to the raw GitHub file; `https://selfdotsend.com/?shortcode` handles the box-drawing variant.
+
 ### Planned Extensions
 
 - Additional custom dictionary pages for frequently encoded owners/repos.

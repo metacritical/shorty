@@ -98,6 +98,35 @@
       font-size: 0.85rem;
       color: var(--muted);
     }
+    .style-field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .style-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .style-options label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .style-options input[type="radio"] {
+      accent-color: var(--accent);
+    }
+    select {
+      background: #0d1117;
+      color: var(--text);
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      min-width: 220px;
+    }
     .code-shell {
       border-radius: 18px;
       background: #0b0f18;
@@ -266,10 +295,14 @@
           <span class="loader-text">Loading tokenizer…</span>
         </div>
         <textarea id="raw-url" placeholder="https://raw.githubusercontent.com/metacritical/termflix/refs/heads/blob/main/QUICKSTART.md&#10;Or&#10;https://github.com/metacritical/termflix/blob/blob/main/QUICKSTART.md"></textarea>
-        <div class="row">
-          <button id="encode-btn" type="button">Shorten URL</button>
-      <span class="hint">Accepts raw URLs or github.com blob URLs (main/master supported).</span>
+        <div class="style-field">
+          <span>Glyph Set</span>
+          <div class="style-options" id="style-options">
+            <label><input type="radio" name="encode-style" value="classic" checked /> Unicode</label>
+            <label><input type="radio" name="encode-style" value="box" /> Box Drawing</label>
+          </div>
         </div>
+        <p class="hint">Accepts raw URLs or github.com blob URLs (main/master supported). Encoding starts automatically.</p>
         <div class="code-shell">
           <div class="code-header">
             <div class="window-controls" aria-hidden="true">
@@ -291,10 +324,7 @@
       <div class="stack">
         <label for="short-code">Shortcode or URL</label>
         <input id="short-code" type="text" placeholder="owner/repo/path or https://host#shortcode" />
-        <div class="row">
-          <button id="decode-btn" type="button">Decode Shortcode</button>
-          <span class="hint">Outputs both the raw and github.com blob versions (with branch).</span>
-        </div>
+        <p class="hint">Paste a shortcode or URL to decode instantly.</p>
         <div class="code-shell">
           <div class="code-header">
             <div class="window-controls" aria-hidden="true">
@@ -341,53 +371,120 @@
     (function () {
       const RAW_PREFIX = 'https://raw.githubusercontent.com/';
       const GITHUB_PREFIX = 'https://github.com/';
-      const CODE_PREFIX = '';
-      const LEGACY_PREFIX = 'g:';
       const DEFAULT_BRANCH = 'main';
       const DICTIONARY_SOURCE = 'words.txt';
       const CURRENT_HOST_BASE = 'https://selfdotsend.com/shorty';
       const EXTRA_WORDS = ['metacritical', 'termflix', 'quickstart', 'readme', 'install'];
+      const INDEX_CHAR_OFFSET = 0x0100;
+      const INDEX_CHAR_MAX = 0xd7ff;
+      const CASE_VARIANTS = 3;
+      const BOX_DIGITS = buildRangeDigits(0x2500, 128);
+      const BOX_DIGIT_MAP = new Map(BOX_DIGITS.map((char, index) => [char, index]));
+      const BOX_DIGIT_LENGTH = 3;
+      const TOKEN_STYLES = {
+        classic: {
+          id: 'classic',
+          label: 'Compact Unicode',
+          prefix: '',
+          shareType: 'hash',
+          shareLabel: 'Short URL (#)',
+          buildValue: (value) => {
+            const charCode = INDEX_CHAR_OFFSET + value;
+            if (charCode > INDEX_CHAR_MAX) {
+              return null;
+            }
+            return String.fromCharCode(charCode);
+          },
+          parseValue: (payload, startIndex) => {
+            const char = payload[startIndex];
+            if (!char) {
+              throw new Error('Invalid dictionary token.');
+            }
+            const encodedValue = char.codePointAt(0) - INDEX_CHAR_OFFSET;
+            if (encodedValue < 0) {
+              throw new Error('Invalid dictionary index.');
+            }
+            return { value: encodedValue, consumed: 1 };
+          }
+        },
+        box: {
+          id: 'box',
+          label: 'Box-Drawing',
+          prefix: '',
+          shareType: 'search',
+          shareLabel: 'Short URL (?)',
+          buildValue: (value) => encodeWithDigits(value, BOX_DIGITS, BOX_DIGIT_LENGTH),
+          parseValue: (payload, startIndex) => parseWithDigits(payload, startIndex, BOX_DIGIT_MAP, BOX_DIGITS.length, BOX_DIGIT_LENGTH)
+        }
+      };
       let DICTIONARY_PAGES = {};
       let DICTIONARY_LOOKUP = new Map();
       let MAX_WORD_LENGTH = 0;
       let tokenizer = null;
-      const INDEX_CHAR_OFFSET = 0x0100;
-      const INDEX_CHAR_MAX = 0xd7ff;
-      const CASE_VARIANTS = 3;
-      const encodeBtn = document.getElementById('encode-btn');
-      const decodeBtn = document.getElementById('decode-btn');
+      let activeEncodingStyle = TOKEN_STYLES.classic;
+      let activeDecodingStyle = TOKEN_STYLES.classic;
+
       const rawInput = document.getElementById('raw-url');
       const codeInput = document.getElementById('short-code');
+      const styleRadios = Array.from(document.querySelectorAll('input[name="encode-style"]'));
       const encodeOutput = document.getElementById('encode-output');
       const decodeOutput = document.getElementById('decode-output');
       const banner = document.getElementById('redirect-banner');
       const countdownNode = document.getElementById('countdown');
       const bannerMessage = document.getElementById('redirect-message');
       const loaderNode = document.getElementById('app-loader');
-      encodeBtn.disabled = true;
-      decodeBtn.disabled = true;
+      rawInput.disabled = true;
+      codeInput.disabled = true;
+      styleRadios.forEach((radio) => {
+        radio.disabled = true;
+      });
+
+      styleRadios.forEach((radio) => {
+        if (radio.checked) {
+          setActiveStyle(radio.value);
+        }
+        radio.addEventListener('change', () => {
+          if (!radio.checked) {
+            return;
+          }
+          setActiveStyle(radio.value);
+          triggerEncoding();
+        });
+      });
+      if (!styleRadios.some((radio) => radio.checked)) {
+        setActiveStyle('classic');
+      }
+
       const tokenizerReady = window.shortyTokenizerReady || Promise.resolve(null);
-      const hash = window.location.hash && window.location.hash.length > 1 ? decodeURIComponent(window.location.hash.slice(1)) : null;
-      if (hash) {
+      const incomingCode = detectIncomingCode();
+      if (incomingCode) {
+        codeInput.value = incomingCode.code;
         showLoaderBanner('Loading tokenizer…');
       }
 
       Promise.all([loadDictionary(DICTIONARY_SOURCE), tokenizerReady])
         .then(([, loadedTokenizer]) => {
           tokenizer = loadedTokenizer;
-          encodeBtn.disabled = false;
-          decodeBtn.disabled = false;
           if (loaderNode) {
             loaderNode.classList.add('hidden');
           }
-          if (!hash && rawInput) {
+          rawInput.disabled = false;
+          codeInput.disabled = false;
+          styleRadios.forEach((radio) => {
+            radio.disabled = false;
+          });
+          if (!incomingCode && rawInput) {
             rawInput.focus();
           }
-          if (hash) {
+          if (!incomingCode) {
+            triggerEncoding();
+            triggerDecoding();
+          }
+          if (incomingCode) {
             bannerMessage.textContent = 'Redirecting…';
             showRedirectCountdown(() => {
               try {
-                const target = decodeShortCode(hash);
+                const target = decodeShortCode(incomingCode.code, incomingCode.styleHint);
                 window.location.replace(target.rawUrl);
               } catch (error) {
                 decodeOutput.textContent = error.message;
@@ -408,27 +505,36 @@
           hideBanner();
         });
 
-      function encodeRawUrl(url) {
+      function detectIncomingCode() {
+        const search = window.location.search;
+        if (search && search.length > 1) {
+          const raw = decodeURIComponent(search.slice(1));
+          const parsed = parseCodeAndStyle(raw, TOKEN_STYLES.box);
+          return parsed.code ? parsed : null;
+        }
+        const hashValue = window.location.hash;
+        if (hashValue && hashValue.length > 1) {
+          const parsed = parseCodeAndStyle(decodeURIComponent(hashValue.slice(1)), TOKEN_STYLES.classic);
+          return parsed.code ? parsed : null;
+        }
+        return null;
+      }
+
+      function encodeRawUrl(url, style) {
         const { owner, repo, branch, filepath } = extractRepoData(url);
         const branchToken = branch === DEFAULT_BRANCH ? '' : '@' + branch;
         const canonical = owner + '/' + repo + branchToken + '/' + filepath;
-        return (CODE_PREFIX + encodeText(canonical)).trim();
+        activeEncodingStyle = style;
+        return encodeText(canonical);
       }
 
-      function decodeShortCode(code) {
+      function decodeShortCode(code, fallbackStyle) {
         if (!code) {
           throw new Error('Shortcode is required.');
         }
-        let payload = code;
-        if (CODE_PREFIX && payload.startsWith(CODE_PREFIX)) {
-          payload = payload.slice(CODE_PREFIX.length);
-        } else if (payload.startsWith(LEGACY_PREFIX)) {
-          payload = payload.slice(LEGACY_PREFIX.length);
-        }
-        if (!payload) {
-          throw new Error('Shortcode is missing content.');
-        }
-        const decoded = decodeText(payload);
+        const style = fallbackStyle || activeEncodingStyle;
+        activeDecodingStyle = style;
+        const decoded = decodeText(code);
         const parts = decoded.split('/');
         if (parts.length < 3) {
           throw new Error('Shortcode is missing components.');
@@ -441,7 +547,7 @@
         const { repo, branch } = unpackRepoToken(repoToken);
         const rawUrl = buildRawUrl(owner, repo, branch, filepath);
         const githubUrl = buildGithubUrl(owner, repo, branch, filepath);
-        return { owner, repo, branch, filepath, rawUrl, githubUrl, canonical: decoded };
+        return { owner, repo, branch, filepath, rawUrl, githubUrl, canonical: decoded, style };
       }
 
       function extractRepoData(url) {
@@ -597,12 +703,26 @@
         }
         const caseValue = caseFlag === 'lower' ? 0 : caseFlag === 'title' ? 1 : 2;
         const offsetIndex = entry.index * CASE_VARIANTS + caseValue;
-        const charCode = INDEX_CHAR_OFFSET + offsetIndex;
-        if (charCode > INDEX_CHAR_MAX) {
+        const encodedValue = buildEncodedValue(activeEncodingStyle, offsetIndex);
+        if (!encodedValue) {
           return null;
         }
-        const token = '^' + entry.page + String.fromCharCode(charCode);
+        const token = '^' + entry.page + encodedValue;
         return token.length < word.length ? token : null;
+      }
+
+      function buildEncodedValue(style, value) {
+        if (!style || typeof style.buildValue !== 'function') {
+          return null;
+        }
+        return style.buildValue(value);
+      }
+
+      function parseEncodedValue(style, payload, startIndex) {
+        if (!style || typeof style.parseValue !== 'function') {
+          throw new Error('Decoder style is missing.');
+        }
+        return style.parseValue(payload, startIndex);
       }
 
       function selectShortest(defaultValue, ...candidates) {
@@ -615,6 +735,45 @@
           }
         });
         return best;
+      }
+
+      function buildRangeDigits(start, count) {
+        const result = [];
+        for (let offset = 0; offset < count; offset += 1) {
+          result.push(String.fromCharCode(start + offset));
+        }
+        return result;
+      }
+
+      function encodeWithDigits(value, digits, length) {
+        const base = digits.length;
+        const capacity = base ** length;
+        if (value >= capacity) {
+          return null;
+        }
+        const result = new Array(length);
+        let remainder = value;
+        for (let position = length - 1; position >= 0; position -= 1) {
+          result[position] = digits[remainder % base];
+          remainder = Math.floor(remainder / base);
+        }
+        return result.join('');
+      }
+
+      function parseWithDigits(payload, startIndex, digitMap, base, length) {
+        let encodedValue = 0;
+        for (let offset = 0; offset < length; offset += 1) {
+          const char = payload[startIndex + offset];
+          if (!char) {
+            throw new Error('Invalid dictionary token.');
+          }
+          const digit = digitMap.get(char);
+          if (digit === undefined) {
+            throw new Error('Unknown digit in dictionary token.');
+          }
+          encodedValue = encodedValue * base + digit;
+        }
+        return { value: encodedValue, consumed: length };
       }
 
       function decodeText(payload) {
@@ -630,14 +789,7 @@
               continue;
             }
             const pageSymbol = next;
-            const indexChar = payload[index + 2];
-            if (!indexChar) {
-              throw new Error('Invalid dictionary token.');
-            }
-            const encodedValue = indexChar.codePointAt(0) - INDEX_CHAR_OFFSET;
-            if (encodedValue < 0) {
-              throw new Error('Invalid dictionary index.');
-            }
+            const { value: encodedValue, consumed } = parseEncodedValue(activeDecodingStyle, payload, index + 2);
             const entryIndex = Math.floor(encodedValue / CASE_VARIANTS);
             const caseValue = encodedValue % CASE_VARIANTS;
             const list = DICTIONARY_PAGES[pageSymbol] || [];
@@ -645,9 +797,9 @@
             if (!baseWord) {
               throw new Error('Unknown dictionary entry.');
             }
-            const value = applyCasePattern(baseWord, caseValue);
-            result += value;
-            index += 3;
+            const resolved = applyCasePattern(baseWord, caseValue);
+            result += resolved;
+            index += 2 + consumed;
           } else {
             result += current;
             index += 1;
@@ -683,30 +835,38 @@
         return /[A-Za-z0-9]/u.test(char);
       }
 
-      function handleEncode() {
-        if (encodeBtn.disabled) {
+      function triggerEncoding() {
+        if (rawInput.disabled) {
+          return;
+        }
+        const trimmed = rawInput.value.trim();
+        if (!trimmed) {
+          encodeOutput.textContent = 'Encoded shortcode will appear here.';
+          updateLocationForStyle(activeEncodingStyle, '');
           return;
         }
         try {
-          const trimmed = rawInput.value.trim();
-          if (!trimmed) {
-            throw new Error('Please provide a GitHub URL.');
-          }
-          const code = encodeRawUrl(trimmed);
-          renderEncodeResult(code);
-          window.location.hash = code;
+          const style = activeEncodingStyle;
+          const code = encodeRawUrl(trimmed, style);
+          renderEncodeResult(style, code);
+          updateLocationForStyle(style, code);
         } catch (error) {
           showEncodeError(error.message);
         }
       }
 
-      function handleDecode() {
-        if (decodeBtn.disabled) {
+      function triggerDecoding() {
+        if (codeInput.disabled) {
+          return;
+        }
+        const trimmed = codeInput.value.trim();
+        if (!trimmed) {
+          decodeOutput.textContent = 'Decoded URL will appear here.';
           return;
         }
         try {
-          const normalized = extractShortcodeInput(codeInput.value);
-          const result = decodeShortCode(normalized);
+          const extracted = extractShortcodeInput(trimmed);
+          const result = decodeShortCode(extracted.code, extracted.styleHint);
           const entries = [
             { label: 'Raw URL', value: result.rawUrl },
             { label: 'GitHub URL', value: result.githubUrl }
@@ -741,15 +901,55 @@
         banner.classList.add('active');
       }
 
-      encodeBtn.addEventListener('click', handleEncode);
-      decodeBtn.addEventListener('click', handleDecode);
+      rawInput.addEventListener('input', () => {
+        triggerEncoding();
+      });
 
-      function renderEncodeResult(code) {
+      codeInput.addEventListener('input', () => {
+        triggerDecoding();
+      });
+
+      function renderEncodeResult(style, code) {
         const entries = [
           { label: 'Shortcode', value: code },
-          { label: 'Short URL', value: buildShareUrl(CURRENT_HOST_BASE, code) }
+          { label: style.shareLabel || 'Short URL', value: buildShareUrlForStyle(style, code) }
         ];
         setOutputEntries(encodeOutput, entries);
+      }
+
+      function updateLocationForStyle(style, code) {
+        const url = new URL(window.location.href);
+        if (!code) {
+          url.search = '';
+          url.hash = '';
+        } else if (style.shareType === 'search') {
+          url.hash = '';
+          url.search = '?' + code;
+        } else {
+          url.search = '';
+          url.hash = code;
+        }
+        window.history.replaceState(null, '', url.toString());
+      }
+
+      function buildShareUrlForStyle(style, code) {
+        const normalized = CURRENT_HOST_BASE.endsWith('/') ? CURRENT_HOST_BASE.slice(0, -1) : CURRENT_HOST_BASE;
+        if (!code) {
+          return normalized;
+        }
+        if (style.shareType === 'search') {
+          return normalized + '?' + code;
+        }
+        return normalized + '#' + code;
+      }
+
+      function setActiveStyle(styleId) {
+        const nextStyle = TOKEN_STYLES[styleId] || TOKEN_STYLES.classic;
+        activeEncodingStyle = nextStyle;
+        styleRadios.forEach((radio) => {
+          radio.checked = radio.value === nextStyle.id;
+        });
+        activeDecodingStyle = nextStyle;
       }
 
       function setOutputEntries(container, entries) {
@@ -837,24 +1037,31 @@
         }, 1200);
       }
 
-      function buildShareUrl(base, code) {
-        const normalized = base.endsWith('/') ? base.slice(0, -1) : base;
-        return normalized + '#' + code;
-      }
-
       function extractShortcodeInput(value) {
         const trimmed = value.trim();
         if (!trimmed) {
           throw new Error('Please provide a shortcode or URL.');
         }
-        if (/^https?:\/\//iu.test(trimmed) && trimmed.includes('#')) {
-          const fragment = trimmed.split('#').pop();
-          if (!fragment) {
-            throw new Error('URL is missing a shortcode fragment.');
+        if (/^https?:\/\//iu.test(trimmed)) {
+          try {
+            const parsed = new URL(trimmed);
+            if (parsed.search && parsed.search.length > 1) {
+              return parseCodeAndStyle(decodeURIComponent(parsed.search.slice(1)), TOKEN_STYLES.box);
+            }
+            if (parsed.hash && parsed.hash.length > 1) {
+              return parseCodeAndStyle(decodeURIComponent(parsed.hash.slice(1)), TOKEN_STYLES.classic);
+            }
+          } catch (_) {
+            // fall through to treat as shortcode
           }
-          return decodeURIComponent(fragment);
         }
-        return trimmed;
+        if (trimmed.startsWith('?')) {
+          return parseCodeAndStyle(decodeURIComponent(trimmed.slice(1)), TOKEN_STYLES.box);
+        }
+        if (trimmed.startsWith('#')) {
+          return parseCodeAndStyle(decodeURIComponent(trimmed.slice(1)), TOKEN_STYLES.classic);
+        }
+        return parseCodeAndStyle(trimmed, activeEncodingStyle);
       }
 
       function loadDictionary(url) {
@@ -905,6 +1112,19 @@
           });
         });
         return map;
+      }
+
+      function parseCodeAndStyle(raw, defaultStyle) {
+        if (!raw) {
+          return { code: '', styleHint: defaultStyle };
+        }
+        if (raw.startsWith('c:')) {
+          return { code: raw.slice(2), styleHint: TOKEN_STYLES.classic };
+        }
+        if (raw.startsWith('b:')) {
+          return { code: raw.slice(2), styleHint: TOKEN_STYLES.box };
+        }
+        return { code: raw, styleHint: defaultStyle };
       }
     })();
   </script>
