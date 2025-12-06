@@ -63,6 +63,7 @@
       resize: vertical;
       font-size: 0.95rem;
       min-height: 70px;
+      box-sizing: border-box;
     }
     textarea:focus, input[type="text"]:focus {
       outline: 2px solid var(--accent);
@@ -97,14 +98,134 @@
       font-size: 0.85rem;
       color: var(--muted);
     }
-    .output {
+    .code-shell {
+      border-radius: 18px;
+      background: #0b0f18;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 10px 30px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+    .code-header {
+      background: #2f333b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      color: #d1d5db;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    }
+    .window-controls {
+      display: flex;
+      gap: 6px;
+    }
+    .window-controls .control {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .window-controls .red { background: #ff5f57; }
+    .window-controls .yellow { background: #ffbd2f; }
+    .window-controls .green { background: #28c840; }
+    .code-title {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .code-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .loader-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid #4ade80;
+      border-top-color: transparent;
+      animation: spin 0.9s linear infinite;
+    }
+    .badge {
+      background: #ef4444;
+      color: #fff;
+      font-size: 0.7rem;
+      padding: 4px 8px;
+      border-radius: 10px;
+      letter-spacing: 0.06em;
+    }
+    .code-body.output {
       word-break: break-all;
       white-space: pre-wrap;
-      background: #0b1221;
-      padding: 12px 16px;
-      border-radius: 10px;
-      border: 1px dashed #30363d;
+      padding: 18px 20px;
       font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+      min-height: 120px;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .output .output-entry {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .output .output-entry:last-child {
+      margin-bottom: 0;
+    }
+    .output-label {
+      font-weight: 600;
+    }
+    .output-value-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+    .output-value {
+      display: block;
+      width: 100%;
+      flex: 1;
+      word-break: break-all;
+    }
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      border-radius: 6px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      box-shadow: none;
+      min-width: 80px;
+      gap: 6px;
+    }
+    .copy-btn:hover {
+      transform: none;
+      box-shadow: none;
+      background: rgba(74, 222, 128, 0.1);
+    }
+    .copy-btn svg {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+    }
+    .input-loader-row {
+      display: inline-flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      margin-bottom: 8px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--accent);
+    }
+    .hidden {
+      display: none !important;
     }
     .redirect-banner {
       position: fixed;
@@ -139,47 +260,91 @@
 
     <section>
       <div class="stack">
-        <label for="raw-url">Raw GitHub URL</label>
-        <textarea id="raw-url" placeholder="https://raw.githubusercontent.com/user/repo/branch/path/to/file"></textarea>
-        <div class="row">
-          <button id="encode-btn" type="button">Encode URL</button>
-          <span class="hint">Accepts raw URLs or github.com blob URLs on the main branch.</span>
+        <label for="raw-url">Raw/Direct GitHub URL</label>
+        <div class="input-loader-row" id="app-loader">
+          <span class="loader-dot"></span>
+          <span class="loader-text">Loading tokenizer…</span>
         </div>
-        <div class="output" id="encode-output">Encoded shortcode will appear here.</div>
+        <textarea id="raw-url" placeholder="https://raw.githubusercontent.com/metacritical/termflix/refs/heads/blob/main/QUICKSTART.md&#10;Or&#10;https://github.com/metacritical/termflix/blob/blob/main/QUICKSTART.md"></textarea>
+        <div class="row">
+          <button id="encode-btn" type="button">Shorten URL</button>
+      <span class="hint">Accepts raw URLs or github.com blob URLs (main/master supported).</span>
+        </div>
+        <div class="code-shell">
+          <div class="code-header">
+            <div class="window-controls" aria-hidden="true">
+              <span class="control red"></span>
+              <span class="control yellow"></span>
+              <span class="control green"></span>
+            </div>
+            <div class="code-title">Shortened Output</div>
+            <div class="code-actions">
+              <span class="badge">READY</span>
+            </div>
+          </div>
+          <div class="code-body output" id="encode-output">Encoded shortcode will appear here.</div>
+        </div>
       </div>
     </section>
 
     <section>
       <div class="stack">
-        <label for="short-code">Shortcode</label>
-        <input id="short-code" type="text" placeholder="g:..." />
+        <label for="short-code">Shortcode or URL</label>
+        <input id="short-code" type="text" placeholder="owner/repo/path or https://host#shortcode" />
         <div class="row">
           <button id="decode-btn" type="button">Decode Shortcode</button>
-          <span class="hint">Outputs both the raw and github.com blob versions.</span>
+          <span class="hint">Outputs both the raw and github.com blob versions (with branch).</span>
         </div>
-        <div class="output" id="decode-output">Decoded URL will appear here.</div>
+        <div class="code-shell">
+          <div class="code-header">
+            <div class="window-controls" aria-hidden="true">
+              <span class="control red"></span>
+              <span class="control yellow"></span>
+              <span class="control green"></span>
+            </div>
+            <div class="code-title">Decoded Output</div>
+            <div class="code-actions">
+              <span class="badge">INFO</span>
+            </div>
+          </div>
+          <div class="code-body output" id="decode-output">Decoded URL will appear here.</div>
+        </div>
       </div>
     </section>
   </main>
 
   <div class="redirect-banner" id="redirect-banner">
-    <div>Detected shortcode in the URL&hellip;</div>
+    <div id="redirect-message">Detected shortcode in the URL&hellip;</div>
     <div>Redirecting in <span id="countdown">3</span>&hellip;</div>
   </div>
 
-  <script src="dictionary.js"></script>
+  <script type="module">
+    import { get_encoding } from 'https://cdn.jsdelivr.net/npm/js-tiktoken@1.0.21/+esm';
+    window.shortyTokenizerReady = Promise.resolve()
+      .then(() => get_encoding('cl100k_base'))
+      .catch((error) => {
+        console.error('Failed to initialize tokenizer', error);
+        return null;
+      });
+  </script>
+
   <script>
     (function () {
       const RAW_PREFIX = 'https://raw.githubusercontent.com/';
       const GITHUB_PREFIX = 'https://github.com/';
-      const CODE_PREFIX = 'g:';
+      const CODE_PREFIX = '';
+      const LEGACY_PREFIX = 'g:';
       const DEFAULT_BRANCH = 'main';
-      const DEFAULT_REF_SEGMENT = 'refs/heads/' + DEFAULT_BRANCH + '/';
-      const DICTIONARY = Array.isArray(window.SHORTY_DICTIONARY) ? window.SHORTY_DICTIONARY : [];
-      const DICTIONARY_LOOKUP = new Map(DICTIONARY.map((word, index) => [word, index]));
-      const BASE_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-      const BASE = BASE_ALPHABET.length;
-      const MAX_LITERAL_LENGTH = BASE * BASE - 1;
+      const DICTIONARY_SOURCE = 'words.txt';
+      const CURRENT_HOST_BASE = (window.location && window.location.origin ? window.location.origin : '');
+      const EXTRA_WORDS = ['metacritical', 'termflix', 'quickstart', 'readme', 'install'];
+      let DICTIONARY_PAGES = {};
+      let DICTIONARY_LOOKUP = new Map();
+      let MAX_WORD_LENGTH = 0;
+      let tokenizer = null;
+      const INDEX_CHAR_OFFSET = 0x0100;
+      const INDEX_CHAR_MAX = 0xd7ff;
+      const CASE_VARIANTS = 3;
       const encodeBtn = document.getElementById('encode-btn');
       const decodeBtn = document.getElementById('decode-btn');
       const rawInput = document.getElementById('raw-url');
@@ -188,31 +353,86 @@
       const decodeOutput = document.getElementById('decode-output');
       const banner = document.getElementById('redirect-banner');
       const countdownNode = document.getElementById('countdown');
+      const bannerMessage = document.getElementById('redirect-message');
+      const loaderNode = document.getElementById('app-loader');
+      encodeBtn.disabled = true;
+      decodeBtn.disabled = true;
+      const tokenizerReady = window.shortyTokenizerReady || Promise.resolve(null);
+      const hash = window.location.hash && window.location.hash.length > 1 ? decodeURIComponent(window.location.hash.slice(1)) : null;
+      if (hash) {
+        showLoaderBanner('Loading tokenizer…');
+      }
+
+      Promise.all([loadDictionary(DICTIONARY_SOURCE), tokenizerReady])
+        .then(([, loadedTokenizer]) => {
+          tokenizer = loadedTokenizer;
+          encodeBtn.disabled = false;
+          decodeBtn.disabled = false;
+          if (loaderNode) {
+            loaderNode.classList.add('hidden');
+          }
+          if (!hash && rawInput) {
+            rawInput.focus();
+          }
+          if (hash) {
+            bannerMessage.textContent = 'Redirecting…';
+            showRedirectCountdown(() => {
+              try {
+                const target = decodeShortCode(hash);
+                window.location.replace(target.rawUrl);
+              } catch (error) {
+                decodeOutput.textContent = error.message;
+                hideBanner();
+              }
+            });
+          }
+        })
+        .catch((error) => {
+          if (loaderNode) {
+            const textNode = loaderNode.querySelector('.loader-text');
+            if (textNode) {
+              textNode.textContent = 'Failed: ' + error.message;
+            }
+          } else {
+            encodeOutput.textContent = 'Failed to initialize: ' + error.message;
+          }
+          hideBanner();
+        });
 
       function encodeRawUrl(url) {
-        const { owner, repo, filepath } = extractRepoData(url);
-        const canonical = owner + '/' + repo + '/' + filepath;
-        return CODE_PREFIX + encodeText(canonical);
+        const { owner, repo, branch, filepath } = extractRepoData(url);
+        const branchToken = branch === DEFAULT_BRANCH ? '' : '@' + branch;
+        const canonical = owner + '/' + repo + branchToken + '/' + filepath;
+        return (CODE_PREFIX + encodeText(canonical)).trim();
       }
 
       function decodeShortCode(code) {
-        if (!code.startsWith(CODE_PREFIX)) {
-          throw new Error('Shortcode must start with "' + CODE_PREFIX + '".');
+        if (!code) {
+          throw new Error('Shortcode is required.');
         }
-        const payload = code.slice(CODE_PREFIX.length);
+        let payload = code;
+        if (CODE_PREFIX && payload.startsWith(CODE_PREFIX)) {
+          payload = payload.slice(CODE_PREFIX.length);
+        } else if (payload.startsWith(LEGACY_PREFIX)) {
+          payload = payload.slice(LEGACY_PREFIX.length);
+        }
+        if (!payload) {
+          throw new Error('Shortcode is missing content.');
+        }
         const decoded = decodeText(payload);
         const parts = decoded.split('/');
         if (parts.length < 3) {
           throw new Error('Shortcode is missing components.');
         }
-        const [owner, repo, ...rest] = parts;
+        const [owner, repoToken, ...rest] = parts;
         const filepath = rest.join('/');
-        if (!owner || !repo || !filepath) {
+        if (!owner || !repoToken || !filepath) {
           throw new Error('Shortcode is incomplete.');
         }
-        const rawUrl = RAW_PREFIX + owner + '/' + repo + '/' + DEFAULT_REF_SEGMENT + filepath;
-        const githubUrl = GITHUB_PREFIX + owner + '/' + repo + '/blob/' + DEFAULT_BRANCH + '/' + filepath;
-        return { owner, repo, filepath, rawUrl, githubUrl, canonical: decoded };
+        const { repo, branch } = unpackRepoToken(repoToken);
+        const rawUrl = buildRawUrl(owner, repo, branch, filepath);
+        const githubUrl = buildGithubUrl(owner, repo, branch, filepath);
+        return { owner, repo, branch, filepath, rawUrl, githubUrl, canonical: decoded };
       }
 
       function extractRepoData(url) {
@@ -226,27 +446,62 @@
       }
 
       function parseRawUrl(remainder) {
-        const refPattern = new RegExp(String.raw`^([^/]+)\/([^/]+)\/refs\/heads\/${DEFAULT_BRANCH}\/(.+)$`, 'u');
-        const simplePattern = new RegExp(String.raw`^([^/]+)\/([^/]+)\/${DEFAULT_BRANCH}\/(.+)$`, 'u');
-        const match = remainder.match(refPattern) || remainder.match(simplePattern);
-        if (!match) {
-          throw new Error('Raw URL must include refs/heads/main or /main/ after the repo.');
+        const withRefs = remainder.match(/^([^/]+)\/([^/]+)\/refs\/heads\/([^/]+)\/(.+)$/u);
+        if (withRefs) {
+          const [, owner, repo, branch, filepath] = withRefs;
+          return { owner, repo, branch, filepath };
         }
-        const [, owner, repo, filepath] = match;
-        return { owner, repo, filepath };
+        const simple = remainder.match(/^([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/u);
+        if (simple) {
+          const [, owner, repo, branch, filepath] = simple;
+          return { owner, repo, branch, filepath };
+        }
+        throw new Error('Raw URL must include a branch segment after the repo.');
       }
 
       function parseGithubUrl(remainder) {
-        const blobPattern = new RegExp(String.raw`^([^/]+)\/([^/]+)\/blob\/${DEFAULT_BRANCH}\/(.+)$`, 'u');
+        const blobPattern = /^([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/u;
         const match = remainder.match(blobPattern);
         if (!match) {
-          throw new Error('GitHub URL must look like github.com/<org>/<repo>/blob/main/<file>.');
+          throw new Error('GitHub URL must look like github.com/<org>/<repo>/blob/<branch>/<file>.');
         }
-        const [, owner, repo, filepath] = match;
-        return { owner, repo, filepath };
+        const [, owner, repo, branch, filepath] = match;
+        return { owner, repo, branch, filepath };
+      }
+
+      function unpackRepoToken(token) {
+        const atIndex = token.indexOf('@');
+        if (atIndex === -1) {
+          return { repo: token, branch: DEFAULT_BRANCH };
+        }
+        const repo = token.slice(0, atIndex);
+        const branchCandidate = token.slice(atIndex + 1);
+        return { repo, branch: branchCandidate || DEFAULT_BRANCH };
+      }
+
+      function buildRawUrl(owner, repo, branch, filepath) {
+        const branchSegment = 'refs/heads/' + branch + '/';
+        return RAW_PREFIX + owner + '/' + repo + '/' + branchSegment + filepath;
+      }
+
+      function buildGithubUrl(owner, repo, branch, filepath) {
+        return GITHUB_PREFIX + owner + '/' + repo + '/blob/' + branch + '/' + filepath;
       }
 
       function encodeText(text) {
+        if (tokenizer && typeof tokenizer.encode === 'function' && typeof tokenizer.decode === 'function') {
+          const tokens = tokenizer.encode(text);
+          let output = '';
+          for (const token of tokens) {
+            const segment = tokenizer.decode([token]);
+            output += encodeSegment(segment);
+          }
+          return output;
+        }
+        return encodeWithoutTokenizer(text);
+      }
+
+      function encodeWithoutTokenizer(text) {
         let result = '';
         let current = '';
         for (const char of text) {
@@ -254,124 +509,162 @@
             current += char;
           } else {
             if (current) {
-              result += encodeWord(current);
+              result += encodeSegment(current);
               current = '';
             }
-            result += encodeSymbol(char);
+            result += char === '^' ? '^^' : char;
           }
         }
         if (current) {
-          result += encodeWord(current);
+          result += encodeSegment(current);
         }
         return result;
       }
 
-      function decodeText(payload) {
-        let result = '';
-        for (let index = 0; index < payload.length;) {
-          const marker = payload[index];
-          if (marker === 'D') {
-            const style = payload[index + 1];
-            const code = payload.slice(index + 2, index + 4);
-            if (code.length < 2) {
-              throw new Error('Shortcode truncated.');
+      function encodeSegment(segment) {
+        if (/^[A-Za-z]+$/u.test(segment)) {
+          return encodeWordSegment(segment);
+        }
+        return segment === '^' ? '^^' : segment;
+      }
+
+      function encodeWordSegment(word) {
+        if (word === '^') {
+          return '^^';
+        }
+        const direct = encodeWholeWord(word);
+        const decomposed = encodeWordByDecomposition(word);
+        return selectShortest(word, direct, decomposed);
+      }
+
+      function encodeWholeWord(word) {
+        const encoded = encodeDirectDictionaryWord(word);
+        return encoded || word;
+      }
+
+      function encodeWordByDecomposition(word) {
+        if (word.length <= 1) {
+          return word;
+        }
+        const lower = word.toLowerCase();
+        const total = word.length;
+        const best = new Array(total + 1);
+        best[total] = '';
+        for (let index = total - 1; index >= 0; index -= 1) {
+          let bestCandidate = word[index] + (best[index + 1] || '');
+          let bestLength = bestCandidate.length;
+          const limit = Math.min(MAX_WORD_LENGTH, total - index);
+          for (let span = 2; span <= limit; span += 1) {
+            const normalized = lower.slice(index, index + span);
+            const entry = DICTIONARY_LOOKUP.get(normalized);
+            if (!entry) {
+              continue;
             }
-            const dictIndex = decodeNumber(code);
-            const baseWord = DICTIONARY[dictIndex];
+            const encodedPiece = encodeDirectDictionaryWord(word.slice(index, index + span), entry);
+            if (!encodedPiece) {
+              continue;
+            }
+            const suffix = best[index + span];
+            const candidate = encodedPiece + (suffix || '');
+            if (candidate.length < bestLength) {
+              bestCandidate = candidate;
+              bestLength = candidate.length;
+            }
+          }
+          best[index] = bestCandidate;
+        }
+        return best[0] && best[0].length < word.length ? best[0] : word;
+      }
+
+      function encodeDirectDictionaryWord(word, entryOverride) {
+        const normalized = word.toLowerCase();
+        const entry = entryOverride || DICTIONARY_LOOKUP.get(normalized);
+        if (!entry) {
+          return null;
+        }
+        const caseFlag = detectCasePattern(word);
+        if (caseFlag === null) {
+          return null;
+        }
+        const caseValue = caseFlag === 'lower' ? 0 : caseFlag === 'title' ? 1 : 2;
+        const offsetIndex = entry.index * CASE_VARIANTS + caseValue;
+        const charCode = INDEX_CHAR_OFFSET + offsetIndex;
+        if (charCode > INDEX_CHAR_MAX) {
+          return null;
+        }
+        const token = '^' + entry.page + String.fromCharCode(charCode);
+        return token.length < word.length ? token : null;
+      }
+
+      function selectShortest(defaultValue, ...candidates) {
+        let best = defaultValue;
+        let bestLength = defaultValue.length;
+        candidates.forEach((candidate) => {
+          if (candidate && candidate.length < bestLength) {
+            best = candidate;
+            bestLength = candidate.length;
+          }
+        });
+        return best;
+      }
+
+      function decodeText(payload) {
+        let index = 0;
+        let result = '';
+        while (index < payload.length) {
+          const current = payload[index];
+          if (current === '^') {
+            const next = payload[index + 1];
+            if (next === '^') {
+              result += '^';
+              index += 2;
+              continue;
+            }
+            const pageSymbol = next;
+            const indexChar = payload[index + 2];
+            if (!indexChar) {
+              throw new Error('Invalid dictionary token.');
+            }
+            const encodedValue = indexChar.codePointAt(0) - INDEX_CHAR_OFFSET;
+            if (encodedValue < 0) {
+              throw new Error('Invalid dictionary index.');
+            }
+            const entryIndex = Math.floor(encodedValue / CASE_VARIANTS);
+            const caseValue = encodedValue % CASE_VARIANTS;
+            const list = DICTIONARY_PAGES[pageSymbol] || [];
+            const baseWord = list[entryIndex];
             if (!baseWord) {
               throw new Error('Unknown dictionary entry.');
             }
-            result += applyCasePattern(baseWord, style);
-            index += 4;
-          } else if (marker === 'L') {
-            const lengthCode = payload.slice(index + 1, index + 3);
-            if (lengthCode.length < 2) {
-              throw new Error('Malformed literal block.');
-            }
-            const literalLength = decodeNumber(lengthCode);
-            const literal = payload.slice(index + 3, index + 3 + literalLength);
-            if (literal.length < literalLength) {
-              throw new Error('Literal block truncated.');
-            }
-            result += literal;
-            index += 3 + literalLength;
+            const value = applyCasePattern(baseWord, caseValue);
+            result += value;
+            index += 3;
           } else {
-            result += marker;
+            result += current;
             index += 1;
           }
         }
         return result;
       }
 
-      function encodeWord(word) {
-        if (/^[a-z]+$/iu.test(word)) {
-          const dictionaryKey = word.toLowerCase();
-          const entryIndex = DICTIONARY_LOOKUP.get(dictionaryKey);
-          const caseFlag = detectCasePattern(word);
-          if (entryIndex !== undefined && caseFlag !== null) {
-            return 'D' + caseFlag + encodeNumber(entryIndex);
-          }
-        }
-        return encodeLiteral(word);
-      }
-
-      function encodeSymbol(char) {
-        if (char === 'D' || char === 'L') {
-          return encodeLiteral(char);
-        }
-        return char;
-      }
-
-      function encodeLiteral(value) {
-        let remaining = value;
-        let encoded = '';
-        while (remaining.length > 0) {
-          const chunk = remaining.slice(0, MAX_LITERAL_LENGTH);
-          encoded += 'L' + encodeNumber(chunk.length) + chunk;
-          remaining = remaining.slice(chunk.length);
-        }
-        return encoded;
-      }
-
-      function encodeNumber(number) {
-        if (number < 0 || number > MAX_LITERAL_LENGTH) {
-          throw new Error('Value out of range.');
-        }
-        const high = Math.floor(number / BASE);
-        const low = number % BASE;
-        return BASE_ALPHABET[high] + BASE_ALPHABET[low];
-      }
-
-      function decodeNumber(pair) {
-        if (pair.length !== 2) {
-          throw new Error('Invalid length encoding.');
-        }
-        const high = BASE_ALPHABET.indexOf(pair[0]);
-        const low = BASE_ALPHABET.indexOf(pair[1]);
-        if (high === -1 || low === -1) {
-          throw new Error('Invalid characters in encoded number.');
-        }
-        return high * BASE + low;
-      }
-
       function detectCasePattern(word) {
         if (word === word.toLowerCase()) {
-          return '0';
-        }
-        if (word === word.toUpperCase()) {
-          return '1';
+          return 'lower';
         }
         if (word[0] === word[0].toUpperCase() && word.slice(1) === word.slice(1).toLowerCase()) {
-          return '2';
+          return 'title';
+        }
+        if (word === word.toUpperCase()) {
+          return 'upper';
         }
         return null;
       }
 
-      function applyCasePattern(baseWord, flag) {
-        if (flag === '1') {
+      function applyCasePattern(baseWord, caseValue) {
+        if (caseValue === 2) {
           return baseWord.toUpperCase();
         }
-        if (flag === '2') {
+        if (caseValue === 1) {
           return baseWord.charAt(0).toUpperCase() + baseWord.slice(1);
         }
         return baseWord;
@@ -382,43 +675,34 @@
       }
 
       function handleEncode() {
+        if (encodeBtn.disabled) {
+          return;
+        }
         try {
           const trimmed = rawInput.value.trim();
           if (!trimmed) {
-            throw new Error('Please provide a raw GitHub URL.');
+            throw new Error('Please provide a GitHub URL.');
           }
           const code = encodeRawUrl(trimmed);
-          encodeOutput.textContent = code;
+          renderEncodeResult(code);
           window.location.hash = code;
         } catch (error) {
-          encodeOutput.textContent = error.message;
+          showEncodeError(error.message);
         }
       }
 
       function handleDecode() {
-        try {
-          const trimmed = codeInput.value.trim();
-          if (!trimmed) {
-            throw new Error('Please provide a shortcode.');
-          }
-          const result = decodeShortCode(trimmed);
-          decodeOutput.textContent = 'Raw: ' + result.rawUrl + '\nGitHub: ' + result.githubUrl;
-        } catch (error) {
-          decodeOutput.textContent = error.message;
-        }
-      }
-
-      function autoRedirectIfHash() {
-        const hash = window.location.hash;
-        if (!hash || hash.length <= 1) {
+        if (decodeBtn.disabled) {
           return;
         }
-        const shortcode = decodeURIComponent(hash.slice(1));
         try {
-          const target = decodeShortCode(shortcode);
-          showRedirectCountdown(() => {
-            window.location.replace(target.rawUrl);
-          });
+          const normalized = extractShortcodeInput(codeInput.value);
+          const result = decodeShortCode(normalized);
+          const entries = [
+            { label: 'Raw URL', value: result.rawUrl },
+            { label: 'GitHub URL', value: result.githubUrl }
+          ];
+          setOutputEntries(decodeOutput, entries);
         } catch (error) {
           decodeOutput.textContent = error.message;
         }
@@ -438,15 +722,183 @@
         }, 1000);
       }
 
+      function hideBanner() {
+        banner.classList.remove('active');
+      }
+
+      function showLoaderBanner(message) {
+        bannerMessage.textContent = message;
+        countdownNode.textContent = '…';
+        banner.classList.add('active');
+      }
+
       encodeBtn.addEventListener('click', handleEncode);
       decodeBtn.addEventListener('click', handleDecode);
 
-      if (document.readyState === 'loading') {
-        window.addEventListener('DOMContentLoaded', autoRedirectIfHash);
-      } else {
-        autoRedirectIfHash();
+      function renderEncodeResult(code) {
+        const entries = [
+          { label: 'Shortcode', value: code },
+          { label: 'Short URL', value: buildShareUrl(CURRENT_HOST_BASE, code) }
+        ];
+        setOutputEntries(encodeOutput, entries);
+      }
+
+      function setOutputEntries(container, entries) {
+        container.innerHTML = '';
+        entries.forEach((entry) => {
+          const row = document.createElement('div');
+          row.className = 'output-entry';
+
+          const label = document.createElement('div');
+          label.className = 'output-label';
+          label.textContent = entry.label + ':';
+
+          const valueRow = document.createElement('div');
+          valueRow.className = 'output-value-row';
+
+          const value = document.createElement('code');
+          value.className = 'output-value';
+          value.textContent = entry.value;
+          valueRow.appendChild(value);
+
+          if (entry.copy !== false) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'copy-btn';
+            button.setAttribute('aria-label', 'Copy ' + entry.label);
+            button.innerHTML = '<span>Copy</span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><rect x="4" y="4" width="12" height="12" rx="2"></rect></svg>';
+            button.dataset.originalContent = button.innerHTML;
+            button.addEventListener('click', () => copyToClipboard(entry.value, button));
+            valueRow.appendChild(button);
+          }
+
+          row.appendChild(label);
+          row.appendChild(valueRow);
+          container.appendChild(row);
+        });
+      }
+
+      function showEncodeError(message) {
+        encodeOutput.innerHTML = '';
+        encodeOutput.textContent = message;
+      }
+
+      function copyToClipboard(text, button) {
+        const fallback = () => fallbackCopy(text);
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          navigator.clipboard.writeText(text).then(
+            () => indicateCopied(button),
+            () => {
+              fallback();
+              indicateCopied(button);
+            }
+          );
+        } else {
+          fallback();
+          indicateCopied(button);
+        }
+      }
+
+      function fallbackCopy(text) {
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        temp.style.position = 'fixed';
+        temp.style.left = '-9999px';
+        document.body.appendChild(temp);
+        temp.select();
+        try {
+          document.execCommand('copy');
+        } catch (_) {
+          // ignore
+        }
+        document.body.removeChild(temp);
+      }
+
+      function indicateCopied(button) {
+        if (!button) {
+          return;
+        }
+        const original = button.dataset.originalContent || button.innerHTML;
+        button.dataset.originalContent = original;
+        button.textContent = 'Copied!';
+        button.disabled = true;
+        setTimeout(() => {
+          button.innerHTML = button.dataset.originalContent || original;
+          button.disabled = false;
+        }, 1200);
+      }
+
+      function buildShareUrl(base, code) {
+        const normalized = base.endsWith('/') ? base.slice(0, -1) : base;
+        return normalized + '#' + code;
+      }
+
+      function extractShortcodeInput(value) {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          throw new Error('Please provide a shortcode or URL.');
+        }
+        if (/^https?:\/\//iu.test(trimmed) && trimmed.includes('#')) {
+          const fragment = trimmed.split('#').pop();
+          if (!fragment) {
+            throw new Error('URL is missing a shortcode fragment.');
+          }
+          return decodeURIComponent(fragment);
+        }
+        return trimmed;
+      }
+
+      function loadDictionary(url) {
+        return fetch(url)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error('HTTP ' + response.status);
+            }
+            return response.text();
+          })
+          .then((text) => {
+            const pages = Object.create(null);
+            MAX_WORD_LENGTH = 0;
+            text.split(/\r?\n/u).forEach((line) => {
+              addWordToPages(line.trim(), pages);
+            });
+            EXTRA_WORDS.forEach((word) => addWordToPages(word, pages));
+            DICTIONARY_PAGES = pages;
+            DICTIONARY_LOOKUP = buildLookupMap(pages);
+          });
+      }
+
+      function addWordToPages(word, pages) {
+        if (!word) {
+          return;
+        }
+        const normalized = word.toLowerCase();
+        if (!/^[a-z]+$/u.test(normalized)) {
+          return;
+        }
+        const page = normalized[0];
+        if (!pages[page]) {
+          pages[page] = [];
+        }
+        if (!pages[page].includes(normalized)) {
+          pages[page].push(normalized);
+          if (normalized.length > MAX_WORD_LENGTH) {
+            MAX_WORD_LENGTH = normalized.length;
+          }
+        }
+      }
+
+      function buildLookupMap(pages) {
+        const map = new Map();
+        Object.entries(pages).forEach(([page, words]) => {
+          words.forEach((word, index) => {
+            map.set(word, { page, index });
+          });
+        });
+        return map;
       }
     })();
   </script>
+
 </body>
 </html>
