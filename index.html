@@ -254,8 +254,8 @@
 <body>
   <main>
     <header>
-      <h1>Raw GitHub URL Shortener</h1>
-      <p>Encode and decode <code>raw.githubusercontent.com</code> links entirely in the browser. Paste a raw URL to generate a portable shortcode, or drop in a shortcode to reconstruct the original download link.</p>
+      <h1>TikToken + Unix Dictionary Shortener</h1>
+      <p>Shorty tokenizes GitHub raw/blob URLs with <strong>TikToken</strong>, swaps every dictionary hit with a two-character marker sourced from the UNIX word list, and keeps everything on one static page. Paste a link to generate a deterministic shortcode, or drop in a shortcode/URL to restore the original download target.</p>
     </header>
 
     <section>
@@ -309,6 +309,15 @@
           </div>
           <div class="code-body output" id="decode-output">Decoded URL will appear here.</div>
         </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>How it works</h2>
+        <p>
+          The encoder splits the canonical <code>owner/repo/@branch/path</code> string using TikToken&rsquo;s subword vocabulary. Each alphabetic run is checked against a cached UNIX dictionary (plus a few custom tokens); if the dictionary token is shorter, it becomes a <code>^page+unicode</code> symbol that captures both the entry index and the word&rsquo;s case. Decoding reverses the process by reading those markers back into words before rebuilding both the raw download URL and the standard GitHub blob link. Everything lives in <code>index.html</code> and <code>words.txt</code>, so any host can serve it without a backend.
+        </p>
       </div>
     </section>
   </main>
