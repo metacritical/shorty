@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raw GitHub URL Shortener</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --bg: #0d1117;
+      --panel: #161b22;
+      --accent: #4ade80;
+      --text: #e6edf3;
+      --muted: #a1a1aa;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 16px;
+    }
+    main {
+      width: min(960px, 100%);
+      display: grid;
+      gap: 24px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.8rem, 2vw, 2.4rem);
+    }
+    p {
+      margin: 0 0 24px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    section {
+      background: var(--panel);
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    textarea, input[type="text"] {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: var(--text);
+      resize: vertical;
+      font-size: 0.95rem;
+      min-height: 70px;
+    }
+    textarea:focus, input[type="text"]:focus {
+      outline: 2px solid var(--accent);
+    }
+    button {
+      background: var(--accent);
+      color: #052e16;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: transform 120ms ease, box-shadow 120ms ease;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 20px rgba(74, 222, 128, 0.25);
+    }
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .hint {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .output {
+      word-break: break-all;
+      white-space: pre-wrap;
+      background: #0b1221;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px dashed #30363d;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    }
+    .redirect-banner {
+      position: fixed;
+      inset: 0;
+      background: rgba(13, 17, 23, 0.92);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      color: var(--text);
+      z-index: 999;
+      font-size: 1.4rem;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 200ms ease;
+    }
+    .redirect-banner.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Raw GitHub URL Shortener</h1>
+      <p>Encode and decode <code>raw.githubusercontent.com</code> links entirely in the browser. Paste a raw URL to generate a portable shortcode, or drop in a shortcode to reconstruct the original download link.</p>
+    </header>
+
+    <section>
+      <div class="stack">
+        <label for="raw-url">Raw GitHub URL</label>
+        <textarea id="raw-url" placeholder="https://raw.githubusercontent.com/user/repo/branch/path/to/file"></textarea>
+        <div class="row">
+          <button id="encode-btn" type="button">Encode URL</button>
+          <span class="hint">Accepts raw URLs or github.com blob URLs on the main branch.</span>
+        </div>
+        <div class="output" id="encode-output">Encoded shortcode will appear here.</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <label for="short-code">Shortcode</label>
+        <input id="short-code" type="text" placeholder="g:..." />
+        <div class="row">
+          <button id="decode-btn" type="button">Decode Shortcode</button>
+          <span class="hint">Outputs both the raw and github.com blob versions.</span>
+        </div>
+        <div class="output" id="decode-output">Decoded URL will appear here.</div>
+      </div>
+    </section>
+  </main>
+
+  <div class="redirect-banner" id="redirect-banner">
+    <div>Detected shortcode in the URL&hellip;</div>
+    <div>Redirecting in <span id="countdown">3</span>&hellip;</div>
+  </div>
+
+  <script src="dictionary.js"></script>
+  <script>
+    (function () {
+      const RAW_PREFIX = 'https://raw.githubusercontent.com/';
+      const GITHUB_PREFIX = 'https://github.com/';
+      const CODE_PREFIX = 'g:';
+      const DEFAULT_BRANCH = 'main';
+      const DEFAULT_REF_SEGMENT = 'refs/heads/' + DEFAULT_BRANCH + '/';
+      const DICTIONARY = Array.isArray(window.SHORTY_DICTIONARY) ? window.SHORTY_DICTIONARY : [];
+      const DICTIONARY_LOOKUP = new Map(DICTIONARY.map((word, index) => [word, index]));
+      const BASE_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      const BASE = BASE_ALPHABET.length;
+      const MAX_LITERAL_LENGTH = BASE * BASE - 1;
+      const encodeBtn = document.getElementById('encode-btn');
+      const decodeBtn = document.getElementById('decode-btn');
+      const rawInput = document.getElementById('raw-url');
+      const codeInput = document.getElementById('short-code');
+      const encodeOutput = document.getElementById('encode-output');
+      const decodeOutput = document.getElementById('decode-output');
+      const banner = document.getElementById('redirect-banner');
+      const countdownNode = document.getElementById('countdown');
+
+      function encodeRawUrl(url) {
+        const { owner, repo, filepath } = extractRepoData(url);
+        const canonical = owner + '/' + repo + '/' + filepath;
+        return CODE_PREFIX + encodeText(canonical);
+      }
+
+      function decodeShortCode(code) {
+        if (!code.startsWith(CODE_PREFIX)) {
+          throw new Error('Shortcode must start with "' + CODE_PREFIX + '".');
+        }
+        const payload = code.slice(CODE_PREFIX.length);
+        const decoded = decodeText(payload);
+        const parts = decoded.split('/');
+        if (parts.length < 3) {
+          throw new Error('Shortcode is missing components.');
+        }
+        const [owner, repo, ...rest] = parts;
+        const filepath = rest.join('/');
+        if (!owner || !repo || !filepath) {
+          throw new Error('Shortcode is incomplete.');
+        }
+        const rawUrl = RAW_PREFIX + owner + '/' + repo + '/' + DEFAULT_REF_SEGMENT + filepath;
+        const githubUrl = GITHUB_PREFIX + owner + '/' + repo + '/blob/' + DEFAULT_BRANCH + '/' + filepath;
+        return { owner, repo, filepath, rawUrl, githubUrl, canonical: decoded };
+      }
+
+      function extractRepoData(url) {
+        if (url.startsWith(RAW_PREFIX)) {
+          return parseRawUrl(url.slice(RAW_PREFIX.length));
+        }
+        if (url.startsWith(GITHUB_PREFIX)) {
+          return parseGithubUrl(url.slice(GITHUB_PREFIX.length));
+        }
+        throw new Error('Provide a raw.githubusercontent.com or github.com/blob URL.');
+      }
+
+      function parseRawUrl(remainder) {
+        const refPattern = new RegExp(String.raw`^([^/]+)\/([^/]+)\/refs\/heads\/${DEFAULT_BRANCH}\/(.+)$`, 'u');
+        const simplePattern = new RegExp(String.raw`^([^/]+)\/([^/]+)\/${DEFAULT_BRANCH}\/(.+)$`, 'u');
+        const match = remainder.match(refPattern) || remainder.match(simplePattern);
+        if (!match) {
+          throw new Error('Raw URL must include refs/heads/main or /main/ after the repo.');
+        }
+        const [, owner, repo, filepath] = match;
+        return { owner, repo, filepath };
+      }
+
+      function parseGithubUrl(remainder) {
+        const blobPattern = new RegExp(String.raw`^([^/]+)\/([^/]+)\/blob\/${DEFAULT_BRANCH}\/(.+)$`, 'u');
+        const match = remainder.match(blobPattern);
+        if (!match) {
+          throw new Error('GitHub URL must look like github.com/<org>/<repo>/blob/main/<file>.');
+        }
+        const [, owner, repo, filepath] = match;
+        return { owner, repo, filepath };
+      }
+
+      function encodeText(text) {
+        let result = '';
+        let current = '';
+        for (const char of text) {
+          if (isWordCharacter(char)) {
+            current += char;
+          } else {
+            if (current) {
+              result += encodeWord(current);
+              current = '';
+            }
+            result += encodeSymbol(char);
+          }
+        }
+        if (current) {
+          result += encodeWord(current);
+        }
+        return result;
+      }
+
+      function decodeText(payload) {
+        let result = '';
+        for (let index = 0; index < payload.length;) {
+          const marker = payload[index];
+          if (marker === 'D') {
+            const style = payload[index + 1];
+            const code = payload.slice(index + 2, index + 4);
+            if (code.length < 2) {
+              throw new Error('Shortcode truncated.');
+            }
+            const dictIndex = decodeNumber(code);
+            const baseWord = DICTIONARY[dictIndex];
+            if (!baseWord) {
+              throw new Error('Unknown dictionary entry.');
+            }
+            result += applyCasePattern(baseWord, style);
+            index += 4;
+          } else if (marker === 'L') {
+            const lengthCode = payload.slice(index + 1, index + 3);
+            if (lengthCode.length < 2) {
+              throw new Error('Malformed literal block.');
+            }
+            const literalLength = decodeNumber(lengthCode);
+            const literal = payload.slice(index + 3, index + 3 + literalLength);
+            if (literal.length < literalLength) {
+              throw new Error('Literal block truncated.');
+            }
+            result += literal;
+            index += 3 + literalLength;
+          } else {
+            result += marker;
+            index += 1;
+          }
+        }
+        return result;
+      }
+
+      function encodeWord(word) {
+        if (/^[a-z]+$/iu.test(word)) {
+          const dictionaryKey = word.toLowerCase();
+          const entryIndex = DICTIONARY_LOOKUP.get(dictionaryKey);
+          const caseFlag = detectCasePattern(word);
+          if (entryIndex !== undefined && caseFlag !== null) {
+            return 'D' + caseFlag + encodeNumber(entryIndex);
+          }
+        }
+        return encodeLiteral(word);
+      }
+
+      function encodeSymbol(char) {
+        if (char === 'D' || char === 'L') {
+          return encodeLiteral(char);
+        }
+        return char;
+      }
+
+      function encodeLiteral(value) {
+        let remaining = value;
+        let encoded = '';
+        while (remaining.length > 0) {
+          const chunk = remaining.slice(0, MAX_LITERAL_LENGTH);
+          encoded += 'L' + encodeNumber(chunk.length) + chunk;
+          remaining = remaining.slice(chunk.length);
+        }
+        return encoded;
+      }
+
+      function encodeNumber(number) {
+        if (number < 0 || number > MAX_LITERAL_LENGTH) {
+          throw new Error('Value out of range.');
+        }
+        const high = Math.floor(number / BASE);
+        const low = number % BASE;
+        return BASE_ALPHABET[high] + BASE_ALPHABET[low];
+      }
+
+      function decodeNumber(pair) {
+        if (pair.length !== 2) {
+          throw new Error('Invalid length encoding.');
+        }
+        const high = BASE_ALPHABET.indexOf(pair[0]);
+        const low = BASE_ALPHABET.indexOf(pair[1]);
+        if (high === -1 || low === -1) {
+          throw new Error('Invalid characters in encoded number.');
+        }
+        return high * BASE + low;
+      }
+
+      function detectCasePattern(word) {
+        if (word === word.toLowerCase()) {
+          return '0';
+        }
+        if (word === word.toUpperCase()) {
+          return '1';
+        }
+        if (word[0] === word[0].toUpperCase() && word.slice(1) === word.slice(1).toLowerCase()) {
+          return '2';
+        }
+        return null;
+      }
+
+      function applyCasePattern(baseWord, flag) {
+        if (flag === '1') {
+          return baseWord.toUpperCase();
+        }
+        if (flag === '2') {
+          return baseWord.charAt(0).toUpperCase() + baseWord.slice(1);
+        }
+        return baseWord;
+      }
+
+      function isWordCharacter(char) {
+        return /[A-Za-z0-9]/u.test(char);
+      }
+
+      function handleEncode() {
+        try {
+          const trimmed = rawInput.value.trim();
+          if (!trimmed) {
+            throw new Error('Please provide a raw GitHub URL.');
+          }
+          const code = encodeRawUrl(trimmed);
+          encodeOutput.textContent = code;
+          window.location.hash = code;
+        } catch (error) {
+          encodeOutput.textContent = error.message;
+        }
+      }
+
+      function handleDecode() {
+        try {
+          const trimmed = codeInput.value.trim();
+          if (!trimmed) {
+            throw new Error('Please provide a shortcode.');
+          }
+          const result = decodeShortCode(trimmed);
+          decodeOutput.textContent = 'Raw: ' + result.rawUrl + '\nGitHub: ' + result.githubUrl;
+        } catch (error) {
+          decodeOutput.textContent = error.message;
+        }
+      }
+
+      function autoRedirectIfHash() {
+        const hash = window.location.hash;
+        if (!hash || hash.length <= 1) {
+          return;
+        }
+        const shortcode = decodeURIComponent(hash.slice(1));
+        try {
+          const target = decodeShortCode(shortcode);
+          showRedirectCountdown(() => {
+            window.location.replace(target.rawUrl);
+          });
+        } catch (error) {
+          decodeOutput.textContent = error.message;
+        }
+      }
+
+      function showRedirectCountdown(onComplete) {
+        banner.classList.add('active');
+        let remaining = 3;
+        countdownNode.textContent = String(remaining);
+        const interval = setInterval(() => {
+          remaining -= 1;
+          countdownNode.textContent = String(Math.max(remaining, 0));
+          if (remaining <= 0) {
+            clearInterval(interval);
+            onComplete();
+          }
+        }, 1000);
+      }
+
+      encodeBtn.addEventListener('click', handleEncode);
+      decodeBtn.addEventListener('click', handleDecode);
+
+      if (document.readyState === 'loading') {
+        window.addEventListener('DOMContentLoaded', autoRedirectIfHash);
+      } else {
+        autoRedirectIfHash();
+      }
+    })();
+  </script>
+</body>
+</html>
